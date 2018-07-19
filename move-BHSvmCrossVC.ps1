@@ -1,6 +1,6 @@
 <#
-move-BHSvmCrossVC.ps1
-
+move-BHSvmCrossVCtest.ps1
+test version
 Written: 7/2018 by Caleb Eaton
 
 Below are goals / notes and will be taken out as the function progresses.
@@ -62,24 +62,22 @@ move-vm -VM $vm -Destination $destination -NetworkAdapter $network -Datastore $d
 
 #>
 
-function move-BHSvmCrossVC
- {
-    # Parameters for the name of the VM and the Cluster it will move to.
+function move-BHSvmCrossVCtest {
     param (
-        [Parameter(Mandatory=$true,Position=0,ValueFromPipeline=$True,ValueFromPipelineByPropertyName=$True)]
-        [string[]] $VMName,
-        [Parameter(Mandatory=$true,Position=1)]
-        [string] $Cluster        
-        )
+       [Parameter(Mandatory=$true,Position=0,ValueFromPipeline=$True,ValueFromPipelineByPropertyName=$True)]
+      [string[]] $VMName,
+       [Parameter(Mandatory=$true,Position=1)]
+       [string] $Cluster
+       )
 
 
- ################
- ## Pre-Checks  #
- ################
+################
+## Pre-Checks  #
+################
 
- # Check to see if connected to both vcenters
- Begin {
-
+# Check to see if connected to both vcenters
+Begin {
+   . \\bhsi.com\deptdata\BHS\ServerInfrastructure\VMware\Scripts\Get-BHSTagAssignment.ps1
 
  $OriginalErrorActionPreference = $ErrorActionPreference
  $ErrorActionPreference = 'SilentlyContinue'
@@ -91,7 +89,6 @@ function move-BHSvmCrossVC
     $no = New-Object System.Management.Automation.Host.ChoiceDescription "&No","Ends the script."
 
     $options = [System.Management.Automation.Host.ChoiceDescription[]]($yes, $no)
-    
     $result = $host.ui.PromptForChoice($title, $message, $options, 0)
 
     switch ($result)
@@ -99,6 +96,7 @@ function move-BHSvmCrossVC
         0 {
             write-output "Connecting to VC and VC1"
             Get-vc vc, vc1
+            #Pre-Copy tags to C:\
             }
 
         1 {
@@ -109,72 +107,68 @@ function move-BHSvmCrossVC
  If ($FoundError) {break}
  }
  $ErrorActionPreference = $OriginalErrorActionPreference # Set ErrorActionPreference back to its original value
-
     }
 
- PROCESS {
 
+
+PROCESS {
     #variable for Multi VM
-    foreach ($VMNames in $VMName)
-    {
+   foreach ($VMNames in $VMName)
+   {
+   Get-BHSTagAssignment -VM $VMName | export-csv -Path c:\$VMNames.csv -NoTypeInformation
+   # This might change, making variables
+   # Variable for to collect the VM
+   $VM = get-vm -Name $VMNames
 
-    # This might change, making variables
-    # Variable for to collect the VM
-    $VM = get-vm -Name $VMNames
+   # Variable to get the tag info
+   $VMtagassignment = get-vm $VM | Get-TagAssignment
 
-    # Variable to get the tag info
-    $VMtagassignment = get-vm $VM | Get-TagAssignment
- 
-    # Variable to get the Network Adapter for the VM
-    $network = Get-NetworkAdapter -VM $VM -server ($VM.uid.split('@')[1].split(':')[0])
+   # Variable to get the Network Adapter for the VM
+   $network = Get-NetworkAdapter -VM $VM -server ($VM.uid.split('@')[1].split(':')[0])
 
-    #Varialbe to get the Datastore on SOURCE cluster, will only select datastore if more than 150 GB free space.
-    $datastore =  get-datastore -RelatedObject ($Cluster) | sort -Descending -Property FreeSpaceGB | ? {$_.name -like $Cluster + "*" -and $_.freespacegb -gt 150} | select -first 1
+   #Varialbe to get the Datastore on SOURCE cluster, will only select datastore if more than 150 GB free space.
+   $datastore =  get-datastore -RelatedObject ($Cluster) | sort -Descending -Property FreeSpaceGB | ? {$_.name -like $Cluster + "*" -and $_.freespacegb -gt 150} | select -first 1
 
- #### CHECK Datastore size ######
+#### CHECK Datastore size ######
 
- #Varialbe to combine datastore and vm provisioned
- $vm_and_ds = $VM.provisionedspacegb + 150
-
-
- IF ($vm_and_ds -gt $datastore.FreeSpaceGB) {
-     Write-Warning "Cluster does not have enough storage add more storage and re-run"
-    
-    }
- Else {    
-    
- #Variable to select a random host in cluster
- $destination = Get-cluster $cluster | get-vmhost |Get-Random
- 
- #Check EVC mode / warning
- $VMEVC = $vm.vmhost.parent.evcmode
- $destinationevc = $destination.parent.evcmode
-
- IF ($VMEVC -ne $destinationevc){
-     Write-Warning "$Cluster is not configured with the same EVC mode, you will have to turn $VM off to move back"
-    }  
+#Varialbe to combine datastore and vm provisioned
+$vm_and_ds = $VM.provisionedspacegb + 150
 
 
- 
- #Name to move the network over to
- $destport = Get-VDPortgroup -VDSwitch (Get-VDSwitch -VMHost $destination) -Name $($network.NetworkName) -Server ($destination.uid.split('@')[1].split(':')[0])
-
- 
- ################
- ## Move Time  ##
- ################
-
- move-vm -VM $vm -Destination $destination -NetworkAdapter $network -Datastore $datastore -PortGroup $destport
-
- ################
- #Re-Assign tags#
- ################
-
- foreach ($vmtag_new in $VMtagassignment) {New-TagAssignment -Tag (get-tag -name $vmtag_new.tag.name -Server $destination.uid.split('@')[1].split(':')[0]) -Entity $VM.name -Server $destination.uid.split('@')[1].split(':')[0] | Out-Null}
-
- 
-     }
+IF ($vm_and_ds -gt $datastore.FreeSpaceGB) {
+    Write-Warning "Cluster does not have enough storage add more storage and re-run"
    }
- }
+Else {
+#Variable to select a random host in cluster
+$destination = Get-cluster $cluster | get-vmhost |Get-Random
+
+#Check EVC mode / warning
+$VMEVC = $vm.vmhost.parent.evcmode
+$destinationevc = $destination.parent.evcmode
+
+IF ($VMEVC -ne $destinationevc){
+    Write-Warning "$Cluster is not configured with the same EVC mode, you will have to turn $VM off to move back"
+   }
+
+#Name to move the network over to
+$destport = Get-VDPortgroup -VDSwitch (Get-VDSwitch -VMHost $destination) -Name $($network.NetworkName) -Server ($destination.uid.split('@')[1].split(':')[0])
+
+
+################
+## Move Time  ##
+################
+
+move-vm -VM $vm -Destination $destination -NetworkAdapter $network -Datastore $datastore -PortGroup $destport
+
+################
+#Re-Assign tags#
+################
+
+foreach ($vmtag_new in $VMtagassignment) {New-TagAssignment -Tag (get-tag -name $vmtag_new.tag.name -Server $destination.uid.split('@')[1].split(':')[0]) -Entity $VM.name -Server $destination.uid.split('@')[1].split(':')[0] | Out-Null}
+
+
+    }
+  }
+}
 }
 
