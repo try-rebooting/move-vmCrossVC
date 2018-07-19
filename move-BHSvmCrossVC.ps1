@@ -1,6 +1,5 @@
 <#
-move-BHSvmCrossVCtest.ps1
-test version
+move-BHSvmCrossVC.ps1
 Written: 7/2018 by Caleb Eaton
 
 Below are goals / notes and will be taken out as the function progresses.
@@ -62,7 +61,7 @@ move-vm -VM $vm -Destination $destination -NetworkAdapter $network -Datastore $d
 
 #>
 
-function move-BHSvmCrossVCtest {
+function move-BHSvmCrossVC {
     param (
        [Parameter(Mandatory=$true,Position=0,ValueFromPipeline=$True,ValueFromPipelineByPropertyName=$True)]
       [string[]] $VMName,
